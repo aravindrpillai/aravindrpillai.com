@@ -1,0 +1,83 @@
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link rel="icon" href="https://s3.ap-south-1.amazonaws.com/aravindrpillai.com/arp.jpg" />
+<title>Aravind R Pillai</title>
+
+<center>
+    <input type="date" id="date"/>
+    <button onClick="loadData()">Load Data</button>
+    <table id="table" border="1" style="width: 60%;"></table>
+</center>
+
+
+<script>
+
+    const currentUrl = window.location.href;
+    const url = new URL(currentUrl);
+	let password = prompt("Enter Password");
+    
+    var base_url = "http://ec2-54-209-198-222.compute-1.amazonaws.com/anonymous?p="+password;
+    //var base_url = "http://127.0.0.1:5001/anonymous?p="+password;
+	
+    loadData();
+
+    function loadData(){
+        var _date = document.getElementById("date").value.trim();
+        console.log("pulling messages on : ", _date);
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", base_url, true);
+        xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+            
+        xhr.onload = function () {
+            if (xhr.status === 200) {
+                var response = JSON.parse(xhr.responseText);
+                console.log("Response:", response);
+                if(response.error === "UnAuthorised"){
+                    console.log("Error...")
+                    document.getElementById("table").innerHTML = '<tr style="border: 3px solid black;"><td><center>Unauthorised</center></td></tr>'
+                }else{
+                    let disp_obj = ''
+                    let i = 0
+                    response.forEach(function(eachRecord) {
+                        i+=1;
+                        disp_obj += '<tr style="border: 3px solid black;"><td>';
+                        disp_obj += (i +": on <b>"+eachRecord.Time +"</b> from IP: <b>"+ eachRecord.IP +"</b>")
+                        disp_obj += ("<br> Location: <a href='"+ eachRecord.Map+"'>"+ eachRecord.Area+"</a><br><font color='blue'>"+eachRecord.Message+"</font>" )
+                        disp_obj += '<br/><button onClick="deleteMessage('+eachRecord.ID+')">delete</button>'
+                        disp_obj += '</td></tr>'
+                    });
+                    document.getElementById("table").innerHTML = disp_obj;
+                }
+            } else {
+                console.log("Failed with status:", xhr.status);
+            }
+        };
+  
+        xhr.onerror = function () {
+            console.log("Request error");
+        };
+         xhr.send();
+      }
+
+      function deleteMessage(id){
+        if(confirm("Confirm action")){
+            var method_url = base_url+"&action=delete&id="+id;
+            console.log("-->"+method_url)
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", method_url, true);
+            xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+            xhr.onload = function () {
+                if (xhr.status === 200) {
+                    loadData()
+                } else {
+                    alert("Failed to delete.");
+                }
+            };
+            xhr.onerror = function () {
+                console.log("Request error");
+            }
+            xhr.send();
+      }
+    }
+    
+  </script>

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aravind Text Area</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f3f3f3;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        .container {
+            width: 95%;
+            height: 90%;
+            box-sizing: border-box;
+            position: relative;
+        }
+        .button-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
+        .button-container button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+        }
+        #submit {
+            background-color: #4CAF50;
+            color: white;
+        }
+        #reset {
+            background-color: #f44336;
+            color: white;
+        }
+        #refresh {
+            background-color: #2196F3;
+            color: white;
+        }
+        .textbox {
+            width: 100%;
+            height: calc(100% - 50px); /* Adjust height to account for button container */
+            padding: 20px;
+            box-sizing: border-box;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+        }
+        .loading-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.7);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .loading-overlay.active {
+            display: flex;
+        }
+        .message {
+            font-size: 16px;
+            color: #333;
+            text-align: center;
+            width: 100%;
+        }
+        footer {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        footer a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="button-container">
+            <button id="reset" onclick="document.getElementById('text-box').innerHTML=''">Reset</button>
+            <button id="refresh" onclick="refreshData()">Refresh</button>
+            <div id="status-message" class="message"></div>
+            <button id="submit" onclick="submitData()">Submit</button>
+        </div>
+        <div id="text-box" class="textbox" contenteditable="true" placeholder="Enter your text, paste images, or other content here..."></div>
+
+        <div id="loading-overlay" class="loading-overlay">
+            <div>Loading...</div>
+        </div>
+    </div>
+
+    <footer>
+        Credits: <a href="http://aravindrpillai.com" target="_blank">Aravind R Pillai</a>
+    </footer>
+
+    <script>
+        const textBox = document.getElementById('text-box');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const statusMessage = document.getElementById('status-message');
+		var code = prompt("Enter Text Code");
+		
+		var base_url = "http://ec2-54-209-198-222.compute-1.amazonaws.com/textbox";
+		
+        textBox.addEventListener('paste', (event) => {
+			const clipboardItems = event.clipboardData.items;
+			for (let item of clipboardItems) {
+				if (item.type.startsWith('image/')) {
+					const blob = item.getAsFile();
+					const reader = new FileReader();
+
+					reader.onload = (e) => {
+						const base64String = e.target.result;
+						const img = document.createElement('img');
+						img.style.maxWidth = '100%';
+						img.style.maxHeight = '300px';
+						img.style.margin = '10px 0';
+						img.src = base64String;
+						textBox.appendChild(img);
+					};
+
+					reader.readAsDataURL(blob);
+					event.preventDefault();
+				}
+			}
+		});
+
+
+        async function submitData() {
+            loadingOverlay.classList.add('active');
+            statusMessage.textContent = '';
+            try {
+                const content = textBox.innerHTML;
+				let body = JSON.stringify({ "content":content, "code":code });
+				console.log(body);
+                const response = await fetch(base_url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: body 
+                });
+
+                if (response.ok) {
+                    statusMessage.textContent = 'Success';
+                    statusMessage.style.color = 'green';
+                } else {
+                    statusMessage.textContent = 'Failed';
+                    statusMessage.style.color = 'red';
+                }
+            } catch (error) {
+                statusMessage.textContent = 'Failed';
+                statusMessage.style.color = 'red';
+            } finally {
+                loadingOverlay.classList.remove('active');
+            }
+        }
+		
+		
+		async function refreshData() {
+			loadingOverlay.classList.add('active');
+			statusMessage.textContent = '';
+			try {
+				const response = await fetch(base_url+'?code=' + code, {
+					method: 'GET',
+				});
+
+				if (response.ok) {
+					const data = await response.json();
+					textBox.innerHTML = data.content || '';
+				} else {
+					statusMessage.textContent = 'Failed to refresh content';
+					statusMessage.style.color = 'red';
+				}
+			} catch (error) {
+				statusMessage.textContent = 'Failed to refresh content';
+				statusMessage.style.color = 'red';
+			} finally {
+				loadingOverlay.classList.remove('active');
+			}
+		}
+
+
+        // Load initial content on page load
+        window.onload = refreshData;
+    </script>
+</body>
+</html>
