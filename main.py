@@ -1,12 +1,14 @@
 from flask import Flask, request
 from flask_restful import Resource, Api
 from sqllite import AnonymousMessageDB
+from flask_cors import CORS
 from write_anonymous import WriteAnonymous
 from read_anonymous import ReadAnonymous
 from text_app import TextBoxUtil
 
 app = Flask(__name__)
 api = Api(app)
+CORS(app)
 db = AnonymousMessageDB(app)
 
 class Anonimous(Resource): 
@@ -28,4 +30,4 @@ api.add_resource(Anonimous, '/anonymous')
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=80, debug=False)
+    app.run(host='0.0.0.0', port=80, debug=True)

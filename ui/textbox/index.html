@@ -117,7 +117,8 @@
         const statusMessage = document.getElementById('status-message');
 		var code = prompt("Enter Text Code");
 		
-		var base_url = "http://ec2-54-209-198-222.compute-1.amazonaws.com/textbox";
+		//var base_url = "http://ec2-54-209-198-222.compute-1.amazonaws.com/textbox";
+		var base_url = "http://127.0.01/textbox";
 		
         textBox.addEventListener('paste', (event) => {
 			const clipboardItems = event.clipboardData.items;
