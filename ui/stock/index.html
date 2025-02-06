@@ -86,7 +86,8 @@
             justify-content: center;
         }
 
-        .form-group input,
+        .form-group input, 
+        .form-group select, 
         .form-group button {
             height: 45px; /* Standard height */
             width: 200px; /* Standard width */
@@ -114,8 +115,10 @@
             }
             
             .form-group input,
+            .form-group select,
             .form-group button {
-                width: 250px; /* Slightly larger width for better usability */
+                width: 250px;
+                height: 45px;
             }
         }
 
@@ -158,6 +161,8 @@
         .autocomplete-items div:hover {
             background-color: #e9e9e9;
         }
+
+        
         .loading {
             position: fixed;
             top: 0;
@@ -240,10 +245,19 @@
 
     <div class="container" id="containerdiv">
         <div class="form-group" id="formgroupdiv">
+            <select name="exchange" id="exchange">
+                <option value="BO">BSE</option>
+                <option selected value="NS">NSE</option>
+            </select>
             <div class="autocomplete">
                 <input type="text" id="ticker" placeholder="Enter stock ticker...">
                 <div id="autocomplete-list" class="autocomplete-items"></div>
             </div>
+            <select name="model" id="model">
+                <option selected value="v2">YFinance 2.0</option>
+                <option value="v1">YFinance 1.0</option>
+                <option value="xg">XG 1.0</option>
+            </select>
             <input type="number" id="days" value="1000">
             <button onclick="fetchStockData()">Submit</button>
         </div>
@@ -315,13 +329,17 @@
 
                 const ticker = document.getElementById("ticker").value;
                 const days = document.getElementById("days").value;
+                const model = document.getElementById("model").value;
+                const exchange = document.getElementById("exchange").value;
+                let payload = { ticker, days , model, exchange, pw }
+                console.log(payload)
 
-                //var baseurl = "http://ec2-54-209-198-222.compute-1.amazonaws.com";
-                var baseurl = "http://localhost";
+                var baseurl = "http://ec2-54-209-198-222.compute-1.amazonaws.com";
+                //var baseurl = "http://localhost";
                 const response = await fetch(baseurl+"/stock", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ ticker, days , pw})
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await response.json();

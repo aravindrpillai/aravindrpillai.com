@@ -1,46 +1,38 @@
 import yfinance as yf
-import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
 from ta.momentum import RSIIndicator
 from ta.trend import MACD, EMAIndicator, SMAIndicator
 from ta.volatility import BollingerBands
 from datetime import datetime, timedelta
+from imblearn.over_sampling import SMOTE  # For oversampling
 
 class StockEngine:
-    def __init__(self, ticker, days_back=365):
-        self.ticker = ticker + ".NS"  # .NS for NSE (National Stock Exchange)
+    def __init__(self, ticker, exchange, days_back=365):
+        self.ticker = ticker + "."+ exchange
         self.end_date = datetime.today().strftime('%Y-%m-%d')  # Today's date
         self.start_date = (datetime.today() - timedelta(days=days_back)).strftime('%Y-%m-%d')  # Dynamic start date
         self.data = self._fetch_data()
         self.features = self._calculate_technical_indicators()
         self.model, self.accuracy = self._train_model()
 
-    '''
-    # Fetch historical stock data from Yahoo Finance.
-    '''
     def _fetch_data(self):
         data = yf.download(self.ticker, start=self.start_date, end=self.end_date, progress=False)
         if data.empty:
             raise ValueError(f"No data found for {self.ticker} between {self.start_date} and {self.end_date}.")
         return data
 
-    """
-    # Calculate technical indicators like RSI, MACD, Bollinger Bands, EMA, and SMA.
-    """
     def _calculate_technical_indicators(self):
         data = self.data.copy()
+        close_prices = data['Close'].squeeze()
 
-        # Ensure 'Close' is a 1D Pandas Series
-        close_prices = data['Close'].squeeze()  # Convert to 1D Series if necessary
-
-        # RSI (Relative Strength Index)
+        # RSI
         rsi = RSIIndicator(close_prices, window=14)
         data['rsi'] = rsi.rsi()
 
-        # MACD (Moving Average Convergence Divergence)
+        # MACD
         macd = MACD(close_prices, window_slow=26, window_fast=12, window_sign=9)
         data['macd'] = macd.macd()
         data['macd_signal'] = macd.macd_signal()
@@ -51,45 +43,47 @@ class StockEngine:
         data['bollinger_hband'] = bollinger.bollinger_hband()
         data['bollinger_lband'] = bollinger.bollinger_lband()
 
-        # EMA (Exponential Moving Average)
+        # EMA
         data['ema_20'] = EMAIndicator(close_prices, window=20).ema_indicator()
 
-        # SMA (Simple Moving Average)
+        # SMA
         data['sma_50'] = SMAIndicator(close_prices, window=50).sma_indicator()
         data['sma_200'] = SMAIndicator(close_prices, window=200).sma_indicator()
 
-        # Drop NaN values created by indicators
+        # Drop NaN values
         data = data.dropna()
         return data
 
-    """
-    # Prepare features and target variable for the model.
-    """
     def _prepare_features(self):
         features = self.features.copy()
-        features['Target'] = np.where(features['Close'].shift(-1) > features['Close'], 1, 0)
+        # Define target based on a 1% price increase
+        features['Target'] = np.where(features['Close'].shift(-1) > features['Close'] * 1.01, 1, 0)
         features = features.dropna()
         X = features[['rsi', 'macd', 'macd_signal', 'macd_diff', 'bollinger_hband', 'bollinger_lband', 'ema_20', 'sma_50', 'sma_200']]
         y = features['Target']
         return X, y
 
-    """
-    # Train a RandomForestClassifier model
-    """
     def _train_model(self):
         X, y = self._prepare_features()
         if len(X) == 0 or len(y) == 0:
             raise ValueError("Not enough data to train the model. Please check the date range and stock ticker.")
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        
+        # Oversample the minority class using SMOTE
+        smote = SMOTE(random_state=42)
+        X_resampled, y_resampled = smote.fit_resample(X, y)
+
+        # Split data into training and testing sets
+        X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)
+
+        # Train the model
+        model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
         model.fit(X_train, y_train)
+
+        # Evaluate the model
         y_pred = model.predict(X_test)
         accuracy = accuracy_score(y_test, y_pred)
         return model, accuracy
 
-    """
-    # Get benchmark and analysis for each indicator.
-    """
     def _get_benchmark_and_analysis(self, indicator, current_value, close_price=None):
         benchmark = None
         analysis = ""
@@ -98,7 +92,7 @@ class StockEngine:
             benchmark = 50  # Neutral level
             if current_value > 70:
                 analysis = "Overbought (Sell signal)"
-            elif current_value < 30:
+            elif current_value < 40:  # Adjusted threshold for oversold
                 analysis = "Oversold (Buy signal)"
             else:
                 analysis = "Neutral"
@@ -140,14 +134,10 @@ class StockEngine:
                 analysis = "Price below SMA 200 (Bearish)"
 
         return benchmark, analysis
-    
 
-    """
-    # Generate prediction with dynamic JSON output
-    """
     def predict_today(self):
         latest_data = self.features.iloc[-1:]
-        current_price = float(latest_data['Close'].values[0])
+        current_price = float(latest_data['Close'].iloc[-1])  # Fix deprecation warning
 
         # Prepare JSON structure
         output = {
@@ -156,23 +146,23 @@ class StockEngine:
             "prediction_accuracy": float(self.accuracy),
             "current_price": current_price,
             "decision": "",
-            "stop_loss": float(latest_data['bollinger_lband'].values[0]),
-            "target_price": float(latest_data['bollinger_hband'].values[0]),
+            "stop_loss": float(latest_data['bollinger_lband'].iloc[-1]),
+            "target_price": float(latest_data['bollinger_hband'].iloc[-1]),
             "technical_indicators": [],
             "detailed_description": ""
         }
 
         # Populate technical indicators
         indicators = {
-            "rsi": {"current_value": float(latest_data['rsi'].values[0])},
-            "macd": {"current_value": float(latest_data['macd'].values[0])},
-            "macd_signal": {"current_value": float(latest_data['macd_signal'].values[0])},
-            "macd_diff": {"current_value": float(latest_data['macd_diff'].values[0])},
-            "bollinger_hband": {"current_value": float(latest_data['bollinger_hband'].values[0])},
-            "bollinger_lband": {"current_value": float(latest_data['bollinger_lband'].values[0])},
-            "ema_20": {"current_value": float(latest_data['ema_20'].values[0])},
-            "sma_50": {"current_value": float(latest_data['sma_50'].values[0])},
-            "sma_200": {"current_value": float(latest_data['sma_200'].values[0])},
+            "rsi": {"current_value": float(latest_data['rsi'].iloc[-1])},
+            "macd": {"current_value": float(latest_data['macd'].iloc[-1])},
+            "macd_signal": {"current_value": float(latest_data['macd_signal'].iloc[-1])},
+            "macd_diff": {"current_value": float(latest_data['macd_diff'].iloc[-1])},
+            "bollinger_hband": {"current_value": float(latest_data['bollinger_hband'].iloc[-1])},
+            "bollinger_lband": {"current_value": float(latest_data['bollinger_lband'].iloc[-1])},
+            "ema_20": {"current_value": float(latest_data['ema_20'].iloc[-1])},
+            "sma_50": {"current_value": float(latest_data['sma_50'].iloc[-1])},
+            "sma_200": {"current_value": float(latest_data['sma_200'].iloc[-1])},
         }
 
         for indicator, values in indicators.items():
@@ -193,9 +183,9 @@ class StockEngine:
         sma_200 = indicators['sma_200']['current_value']
         bollinger_hband = indicators['bollinger_hband']['current_value']
         bollinger_lband = indicators['bollinger_lband']['current_value']
-        
-        if  rsi < 30:
-            reasons.append(f"Oversold (RSI: {rsi:.2f} < 30)")
+
+        if rsi < 40:  # Adjusted threshold for oversold
+            reasons.append(f"Oversold (RSI: {rsi:.2f} < 40)")
         elif rsi > 70:
             reasons.append(f"Overbought (RSI: {rsi:.2f} > 70)")
 
@@ -229,3 +219,12 @@ class StockEngine:
         )
 
         return output
+
+
+# Example Usage
+if __name__ == "__main__":
+    #ticker = "JINDALSTEL"  # Replace with any stock ticker
+    ticker = "ZYDUSLIFE"  # Replace with any stock ticker
+    engine = StockEngine(ticker)
+    prediction = engine.predict_today()
+    print(prediction)

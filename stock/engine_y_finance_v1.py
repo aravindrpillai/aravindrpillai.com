@@ -1,36 +1,39 @@
 import yfinance as yf
 import numpy as np
-from xgboost import XGBClassifier  # Advanced model
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from ta.momentum import RSIIndicator
 from ta.trend import MACD, EMAIndicator, SMAIndicator
 from ta.volatility import BollingerBands
 from datetime import datetime, timedelta
-import json
 
 class StockEngine:
     def __init__(self, ticker, exchange, days_back=365):
-        self.ticker = ticker + "."+ exchange
-        self.end_date = datetime.today().strftime('%Y-%m-%d')
-        self.start_date = (datetime.today() - timedelta(days=days_back)).strftime('%Y-%m-%d')
+        self.ticker = ticker + "." + exchange
+        self.end_date = datetime.today().strftime('%Y-%m-%d')  # Today's date
+        self.start_date = (datetime.today() - timedelta(days=days_back)).strftime('%Y-%m-%d')  # Dynamic start date
         self.data = self._fetch_data()
         self.features = self._calculate_technical_indicators()
         self.model, self.accuracy = self._train_model()
 
+    '''
+    # Fetch historical stock data from Yahoo Finance.
+    '''
     def _fetch_data(self):
-        """Fetch historical stock data from Yahoo Finance."""
-        data = yf.download(self.ticker, start=self.start_date, end=self.end_date)
+        data = yf.download(self.ticker, start=self.start_date, end=self.end_date, progress=False)
         if data.empty:
             raise ValueError(f"No data found for {self.ticker} between {self.start_date} and {self.end_date}.")
         return data
 
+    """
+    # Calculate technical indicators like RSI, MACD, Bollinger Bands, EMA, and SMA.
+    """
     def _calculate_technical_indicators(self):
-        """Calculate technical indicators like RSI, MACD, Bollinger Bands, EMA, and SMA."""
         data = self.data.copy()
 
         # Ensure 'Close' is a 1D Pandas Series
-        close_prices = data['Close'].squeeze()
+        close_prices = data['Close'].squeeze()  # Convert to 1D Series if necessary
 
         # RSI (Relative Strength Index)
         rsi = RSIIndicator(close_prices, window=14)
@@ -58,8 +61,10 @@ class StockEngine:
         data = data.dropna()
         return data
 
+    """
+    # Prepare features and target variable for the model.
+    """
     def _prepare_features(self):
-        """Prepare features and target variable for the model."""
         features = self.features.copy()
         features['Target'] = np.where(features['Close'].shift(-1) > features['Close'], 1, 0)
         features = features.dropna()
@@ -67,20 +72,79 @@ class StockEngine:
         y = features['Target']
         return X, y
 
+    """
+    # Train a RandomForestClassifier model
+    """
     def _train_model(self):
-        """Train an XGBoost model and return both model and accuracy."""
         X, y = self._prepare_features()
         if len(X) == 0 or len(y) == 0:
-            raise ValueError("Insufficient data for training")
+            raise ValueError("Not enough data to train the model. Please check the date range and stock ticker.")
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        model = XGBClassifier(n_estimators=100, random_state=42)
+        model = RandomForestClassifier(n_estimators=100, random_state=42)
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
         accuracy = accuracy_score(y_test, y_pred)
         return model, accuracy
 
+    """
+    # Get benchmark and analysis for each indicator.
+    """
+    def _get_benchmark_and_analysis(self, indicator, current_value, close_price=None):
+        benchmark = None
+        analysis = ""
+
+        if indicator == "rsi":
+            benchmark = 50  # Neutral level
+            if current_value > 70:
+                analysis = "Overbought (Sell signal)"
+            elif current_value < 30:
+                analysis = "Oversold (Buy signal)"
+            else:
+                analysis = "Neutral"
+        elif indicator == "macd":
+            benchmark = 0  # MACD crossover level
+            if current_value > 0:
+                analysis = "Bullish momentum (Buy signal)"
+            else:
+                analysis = "Bearish momentum (Sell signal)"
+        elif indicator == "bollinger_hband":
+            benchmark = close_price  # Compare with current price
+            if current_value > close_price:
+                analysis = "Price near upper band (Potential resistance)"
+            else:
+                analysis = "Price below upper band"
+        elif indicator == "bollinger_lband":
+            benchmark = close_price  # Compare with current price
+            if current_value < close_price:
+                analysis = "Price near lower band (Potential support)"
+            else:
+                analysis = "Price above lower band"
+        elif indicator == "ema_20":
+            benchmark = close_price  # Compare with current price
+            if current_value < close_price:
+                analysis = "Price above EMA 20 (Bullish)"
+            else:
+                analysis = "Price below EMA 20 (Bearish)"
+        elif indicator == "sma_50":
+            benchmark = close_price  # Compare with current price
+            if current_value < close_price:
+                analysis = "Price above SMA 50 (Bullish)"
+            else:
+                analysis = "Price below SMA 50 (Bearish)"
+        elif indicator == "sma_200":
+            benchmark = close_price  # Compare with current price
+            if current_value < close_price:
+                analysis = "Price above SMA 200 (Bullish)"
+            else:
+                analysis = "Price below SMA 200 (Bearish)"
+
+        return benchmark, analysis
+    
+
+    """
+    # Generate prediction with dynamic JSON output
+    """
     def predict_today(self):
-        """Generate prediction with dynamic JSON output."""
         latest_data = self.features.iloc[-1:]
         current_price = float(latest_data['Close'].values[0])
 
@@ -94,7 +158,6 @@ class StockEngine:
             "stop_loss": float(latest_data['bollinger_lband'].values[0]),
             "target_price": float(latest_data['bollinger_hband'].values[0]),
             "technical_indicators": [],
-            "analysis": "",
             "detailed_description": ""
         }
 
@@ -112,106 +175,56 @@ class StockEngine:
         }
 
         for indicator, values in indicators.items():
+            benchmark, analysis = self._get_benchmark_and_analysis(
+                indicator, values["current_value"], current_price
+            )
             output["technical_indicators"].append({
                 "indicator": indicator,
                 "current_value": values["current_value"],
-                "analysis": self._get_analysis(indicator, values["current_value"], current_price)
+                "benchmark": benchmark,
+                "analysis": analysis
             })
+
+        # Generate dynamic description
+        reasons = []
+        rsi = indicators['rsi']['current_value']
+        macd = indicators['macd']['current_value']
+        sma_200 = indicators['sma_200']['current_value']
+        bollinger_hband = indicators['bollinger_hband']['current_value']
+        bollinger_lband = indicators['bollinger_lband']['current_value']
+        
+        if  rsi < 30:
+            reasons.append(f"Oversold (RSI: {rsi:.2f} < 30)")
+        elif rsi > 70:
+            reasons.append(f"Overbought (RSI: {rsi:.2f} > 70)")
+
+        if macd > 0:
+            reasons.append(f"Bullish MACD crossover (MACD: {macd:.2f} > 0)")
+        else:
+            reasons.append(f"Bearish MACD crossover (MACD: {macd:.2f} < 0)")
+
+        if current_price > sma_200:
+            reasons.append(f"Price above 200-day SMA ({current_price:.2f} > {sma_200:.2f})")
+        else:
+            reasons.append(f"Price below 200-day SMA ({current_price:.2f} < {sma_200:.2f})")
+
+        if current_price > bollinger_hband:
+            reasons.append("Price above upper Bollinger Band")
+        elif current_price < bollinger_lband:
+            reasons.append("Price below lower Bollinger Band")
 
         # Final decision
         prediction = self.model.predict(latest_data[['rsi', 'macd', 'macd_signal', 'macd_diff', 'bollinger_hband', 'bollinger_lband', 'ema_20', 'sma_50', 'sma_200']])
         decision = "Buy" if prediction[0] == 1 else "Sell"
         output["decision"] = decision
 
-        # Generate analysis
-        output["analysis"] = self._generate_analysis(output, decision, indicators, current_price)
-
-        # Generate detailed description
+        # Build detailed description
         output["detailed_description"] = (
             f"Model suggests to {decision}, because:\n"
-            + "\n".join([f"- {indicator['analysis']}" for indicator in output["technical_indicators"]])
+            + "\n".join([f"- {reason}" for reason in reasons])
             + f"\n\nPrediction Confidence: {self.accuracy:.2%}"
             + f"\nStop-loss: {output['stop_loss']:.2f}"
             + f"\nTarget: {output['target_price']:.2f}"
         )
 
         return output
-
-    def _get_analysis(self, indicator, current_value, close_price):
-        """Generate analysis for each indicator."""
-        if indicator == "rsi":
-            if current_value > 70:
-                return "Overbought (Sell signal)"
-            elif current_value < 30:
-                return "Oversold (Buy signal)"
-            else:
-                return "Neutral"
-        elif indicator == "macd":
-            if current_value > 0:
-                return "Bullish momentum (Buy signal)"
-            else:
-                return "Bearish momentum (Sell signal)"
-        elif indicator == "bollinger_hband":
-            if close_price > current_value:
-                return "Price above upper Bollinger Band (Potential resistance)"
-            else:
-                return "Price below upper Bollinger Band"
-        elif indicator == "bollinger_lband":
-            if close_price < current_value:
-                return "Price below lower Bollinger Band (Potential support)"
-            else:
-                return "Price above lower Bollinger Band"
-        elif indicator == "ema_20":
-            if close_price > current_value:
-                return "Price above EMA 20 (Bullish)"
-            else:
-                return "Price below EMA 20 (Bearish)"
-        elif indicator == "sma_50":
-            if close_price > current_value:
-                return "Price above SMA 50 (Bullish)"
-            else:
-                return "Price below SMA 50 (Bearish)"
-        elif indicator == "sma_200":
-            if close_price > current_value:
-                return "Price above SMA 200 (Bullish)"
-            else:
-                return "Price below SMA 200 (Bearish)"
-        return ""
-
-    def _generate_analysis(self, output, decision, indicators, current_price):
-        """Generate detailed analysis explaining the decision."""
-        analysis = "Why the Model Suggests " + decision + ":\n"
-
-        # Bollinger Bands Resistance
-        if indicators["bollinger_hband"]["current_value"] < current_price:
-            analysis += (
-                "\nBollinger Bands Resistance:\n"
-                "The price is near the upper Bollinger Band ({}), which often acts as a resistance level. "
-                "This suggests that the stock might face selling pressure soon.\n"
-            ).format(indicators["bollinger_hband"]["current_value"])
-
-        # Model Decision Explanation
-        analysis += (
-            "\nXGBoost Model Decision:\n"
-            "The model considers all indicators together, not just individual ones. "
-            "While some indicators (like MACD and moving averages) are bullish, the combination of all features "
-            "might have led the model to predict a '{}'. The model might be weighing the Bollinger Bands resistance "
-            "more heavily than the bullish signals.\n"
-        ).format(decision)
-
-        # Prediction Confidence
-        analysis += (
-            "\nPrediction Confidence:\n"
-            "The model's accuracy is {:.2%}, which means it is not 100% reliable. "
-            "There is a chance the prediction could be incorrect.\n"
-        ).format(output["prediction_accuracy"])
-
-        return analysis
-
-# Example usage
-if __name__ == "__main__":
-    ticker = "AARVEEDEN"  # Example: AARVEEDEN
-    days_back = 365  # Example: 1 year
-    predictor = StockEngine(ticker, days_back=days_back)
-    result = predictor.predict_today()
-    print(json.dumps(result, indent=4))
