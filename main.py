@@ -5,6 +5,7 @@ from flask_cors import CORS
 from write_anonymous import WriteAnonymous
 from read_anonymous import ReadAnonymous
 from text_app import TextBoxUtil
+from stock.stock_handler import StockHandler
 
 app = Flask(__name__)
 api = Api(app)
@@ -24,9 +25,17 @@ class TextBox(Resource):
         
     def post(self):
         return TextBoxUtil(app, db).write(request)
+        
+class Stock(Resource):
+    def get(self):
+        return StockHandler(app, db).predict(request)
+        
+    def post(self):
+        return StockHandler(app, db).analyse(request)
 
 api.add_resource(TextBox, '/textbox')        
 api.add_resource(Anonimous, '/anonymous')
+api.add_resource(Stock, '/stock')
 
 
 if __name__ == '__main__':
