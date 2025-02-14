@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Aravind's Intraday Prediction</title>
+  <style>
+    /* Reset & Base styles */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      line-height: 1.6;
+      position: relative;
+    }
+    header {
+      background: #007BFF;
+      color: #fff;
+      padding: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    header .header-left h1 {
+      font-size: 1.5rem;
+      margin: 0;
+    }
+    header .header-right {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    header .header-right input[type="date"],
+    header .header-right button {
+      height: 2.5rem;
+      font-size: 1rem;
+      padding: 0.2rem 0.5rem;
+      border: none;
+      border-radius: 4px;
+    }
+    header .header-right input[type="date"] {
+      border: 1px solid #ccc;
+    }
+    header .header-right button {
+      background: #28a745;
+      color: #fff;
+      cursor: pointer;
+    }
+    header .header-right button:hover {
+      background: #218838;
+    }
+    main {
+      padding: 1rem;
+      max-width: 1200px;
+      margin: auto;
+    }
+    .filters {
+      margin-bottom: 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .filters input,
+    .filters select {
+      padding: 0.5rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      flex: 1 1 200px;
+    }
+    /* Error message styling */
+    #errorMessage {
+      color: red;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+    /* Responsive table container */
+    .table-responsive {
+      width: 100%;
+      overflow-x: auto;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      border-radius: 4px;
+      margin-bottom: 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 800px;
+    }
+    table th, table td {
+      padding: 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    table th {
+      background: #f0f0f0;
+    }
+    /* Pagination styling */
+    .pagination {
+      text-align: center;
+      margin-top: 1rem;
+    }
+    .pagination button {
+      padding: 0.5rem 0.75rem;
+      margin: 0 0.25rem;
+      border: 1px solid #ccc;
+      background: #fff;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .pagination button.active {
+      background: #007BFF;
+      color: #fff;
+      border-color: #007BFF;
+    }
+    footer {
+      background: #333;
+      color: #fff;
+      text-align: center;
+      padding: 1rem;
+      margin-top: 2rem;
+    }
+    /* Loading backdrop */
+    #loadingBackdrop {
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.5);
+    }
+    #loadingBackdrop .loader {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 1.5rem;
+      color: #fff;
+    }
+    @media (max-width: 768px) {
+      header {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+      header .header-right {
+        width: 100%;
+        justify-content: center;
+        margin-top: 0.5rem;
+      }
+      .filters {
+        flex-direction: row;
+        justify-content: space-around;
+      }
+      .filters input,
+      .filters select {
+        flex: 1 1 auto;
+        max-width: 45%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Loading Backdrop -->
+  <div id="loadingBackdrop">
+    <div class="loader">Loading...</div>
+  </div>
+  
+  <header>
+    <div class="header-left">
+      <h1>Aravind's Intraday Prediction</h1>
+    </div>
+    <div class="header-right">
+      <!-- Date picker -->
+      <input type="date" id="datePicker" value="" />
+      <!-- Do Prediction button -->
+      <button id="doPredictionBtn">Do Prediction</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="filters">
+      <input type="text" id="tickerFilter" placeholder="Filter by Ticker" />
+      <select id="predictionFilter">
+        <option value="">Filter by Prediction</option>
+        <option value="MUST Buy">MUST Buy</option>
+        <option value="NEVER Buy">NEVER Buy</option>
+        <option value="Strong Buy">Strong Buy</option>
+        <option value="Buy">Buy</option>
+        <option value="Potential Loss">Potential Loss</option>
+        <option value="Loss">Loss</option>
+        <option value="Idle">Idle</option>
+      </select>
+    </div>
+
+    <!-- Error message container below filters -->
+    <div id="errorMessage"></div>
+
+    <div id="result_section">
+      <div class="table-responsive">
+        <table id="reportTable">
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Exchange</th>
+              <th>Last Closing Date</th>
+              <th>Last Closing Price</th>
+              <th>Prediction Min</th>
+              <th>Prediction Max</th>
+              <th>Down Variance</th>
+              <th>Up Variance</th>
+              <th>Prediction</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Report rows will be injected here -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination controls -->
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </main>
+
+  <footer>
+    &copy; 2025 Aravind's Intraday Prediction.
+  </footer>
+
+  <script>
+    const base_url = "http://ec2-54-209-198-222.compute-1.amazonaws.com";
+    const REPORT_API_URL = base_url + '/intraday/report';
+    const PREDICTION_API_URL = base_url + '/intraday/analyse';
+
+    const recordsPerPage = 10;
+    let currentPage = 1;
+    let fullReportData = [];
+    let allReportData = [];
+
+    // Set default date picker value to tomorrow's date
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().split("T")[0];
+    document.getElementById("datePicker").value = tomorrow;
+
+    // Show loading backdrop
+    function showLoading() {
+      document.getElementById('loadingBackdrop').style.display = "block";
+    }
+
+    // Hide loading backdrop
+    function hideLoading() {
+      document.getElementById('loadingBackdrop').style.display = "none";
+    }
+
+    // Display error message below filter boxes
+    function displayError(msg) {
+      const errorDiv = document.getElementById("errorMessage");
+      errorDiv.textContent = msg;
+    }
+
+    // Clear any error message
+    function clearError() {
+      displayError("");
+    }
+
+    // Fetch report using the given date
+    async function fetchReport(dateValue) {
+      clearError();
+      showLoading();
+      const requestBody = { date: dateValue };
+      try {
+        const response = await fetch(REPORT_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        });
+        if (!response.ok) throw new Error("Network response was not ok");
+        const data = await response.json();
+        if (data.status && data.report) {
+          fullReportData = data.report;
+          allReportData = [...fullReportData];
+          currentPage = 1;
+          displayPage(currentPage);
+          setupPagination();
+          document.getElementById('result_section').style.display = "block";
+        } else {
+          displayError("No report data found.");
+          document.getElementById('result_section').style.display = "none";
+        }
+      } catch (error) {
+        console.error("Error fetching report:", error);
+        displayError("Error fetching report: " + error.message);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // Display a page of results
+    function displayPage(page) {
+      const tbody = document.getElementById('reportTable').querySelector('tbody');
+      tbody.innerHTML = "";
+      const start = (page - 1) * recordsPerPage;
+      const end = start + recordsPerPage;
+      const pageData = allReportData.slice(start, end);
+      pageData.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${item.ticker}</td>
+          <td>${item.exchange}</td>
+          <td>${item.last_closing_date}</td>
+          <td>${item.last_closing_price}</td>
+          <td>${item.prediction_min}</td>
+          <td>${item.prediction_max}</td>
+          <td>${item.down_variance}</td>
+          <td>${item.up_variance}</td>
+          <td>${item.prediction}</td>
+          <td>${item.description}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Setup pagination controls
+    function setupPagination() {
+      const paginationDiv = document.getElementById('pagination');
+      paginationDiv.innerHTML = "";
+      const totalPages = Math.ceil(allReportData.length / recordsPerPage);
+      
+      const prevBtn = document.createElement('button');
+      prevBtn.textContent = "Previous";
+      prevBtn.disabled = currentPage === 1;
+      prevBtn.addEventListener('click', () => {
+        if (currentPage > 1) {
+          currentPage--;
+          displayPage(currentPage);
+          setupPagination();
+        }
+      });
+      paginationDiv.appendChild(prevBtn);
+      
+      for (let i = 1; i <= totalPages; i++) {
+        const pageBtn = document.createElement('button');
+        pageBtn.textContent = i;
+        if (i === currentPage) pageBtn.classList.add('active');
+        pageBtn.addEventListener('click', () => {
+          currentPage = i;
+          displayPage(currentPage);
+          setupPagination();
+        });
+        paginationDiv.appendChild(pageBtn);
+      }
+      
+      const nextBtn = document.createElement('button');
+      nextBtn.textContent = "Next";
+      nextBtn.disabled = currentPage === totalPages;
+      nextBtn.addEventListener('click', () => {
+        if (currentPage < totalPages) {
+          currentPage++;
+          displayPage(currentPage);
+          setupPagination();
+        }
+      });
+      paginationDiv.appendChild(nextBtn);
+    }
+
+    // Filtering function for table
+    function filterTable() {
+      clearError();
+      const tickerFilter = document.getElementById('tickerFilter').value.toLowerCase();
+      const predictionFilter = document.getElementById('predictionFilter').value.toLowerCase();
+      allReportData = fullReportData.filter(item => {
+        const ticker = item.ticker.toLowerCase();
+        const prediction = item.prediction.toLowerCase();
+        let valid = true;
+        if (tickerFilter && !ticker.includes(tickerFilter)) valid = false;
+        if (predictionFilter && !prediction.includes(predictionFilter)) valid = false;
+        return valid;
+      });
+      currentPage = 1;
+      displayPage(currentPage);
+      setupPagination();
+    }
+
+    document.getElementById('tickerFilter').addEventListener('input', filterTable);
+    document.getElementById('predictionFilter').addEventListener('change', filterTable);
+
+    // When the date picker value changes, fetch new report data
+    document.getElementById('datePicker').addEventListener('change', function() {
+      fetchReport(this.value);
+    });
+
+    // Do Prediction button event - uses alert for response
+    document.getElementById('doPredictionBtn').addEventListener('click', async function() {
+      showLoading();
+      const requestBody = { date: document.getElementById('datePicker').value };
+      try {
+        const response = await fetch(PREDICTION_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        });
+        if (!response.ok) throw new Error("Network response was not ok");
+        const result = await response.json();
+        alert(result.message);
+      } catch (error) {
+        console.error("Error in Do Prediction:", error);
+        alert("Error in Do Prediction: " + error.message);
+      } finally {
+        hideLoading();
+      }
+    });
+
+    // Fetch report on initial load with the default date (tomorrow's date).
+    window.addEventListener('load', function() {
+      fetchReport(document.getElementById('datePicker').value);
+    });
+  </script>
+</body>
+</html>

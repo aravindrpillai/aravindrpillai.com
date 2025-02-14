@@ -60,7 +60,3 @@ class StockHandler:
             return resp
         except Exception as e:
             return {"status": False, "message": "Error: "+str(e)}
-
-
-    def predict(self, request):
-        pass

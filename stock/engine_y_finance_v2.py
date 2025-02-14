@@ -2,7 +2,7 @@ import yfinance as yf
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
+from sklearn.metrics import accuracy_score
 from ta.momentum import RSIIndicator
 from ta.trend import MACD, EMAIndicator, SMAIndicator
 from ta.volatility import BollingerBands
@@ -137,7 +137,7 @@ class StockEngine:
 
     def predict_today(self):
         latest_data = self.features.iloc[-1:]
-        current_price = float(latest_data['Close'].iloc[-1])  # Fix deprecation warning
+        current_price = float(latest_data['Close'].iloc[0,0])
 
         # Prepare JSON structure
         output = {
@@ -224,7 +224,7 @@ class StockEngine:
 # Example Usage
 if __name__ == "__main__":
     #ticker = "JINDALSTEL"  # Replace with any stock ticker
-    ticker = "ZYDUSLIFE"  # Replace with any stock ticker
-    engine = StockEngine(ticker)
+    ticker = "JINDALSTEL"  # Replace with any stock ticker
+    engine = StockEngine(ticker, 'NS', 900)
     prediction = engine.predict_today()
-    print(prediction)
+    print(prediction["decision"])
